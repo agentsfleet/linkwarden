@@ -80,7 +80,14 @@ jobs:
           psql -h localhost -U postgres -d postgres -c "CREATE DATABASE ${{ env.TEST_POSTGRES_DATABASE }} OWNER ${{ env.TEST_POSTGRES_USER }};"
 
       - name: Install packages
-        run: yarn install --immutable
+        run: |
+          if yarn install --immutable > "$RUNNER_TEMP/linkwarden-install.log" 2>&1; then
+            printf 'Dependencies installed.\n'
+          else
+            install_status=$?
+            cat "$RUNNER_TEMP/linkwarden-install.log"
+            exit "$install_status"
+          fi
 
       - name: Check link title decoding
         run: yarn test run apps/web/lib/client/unescapeString.test.ts
