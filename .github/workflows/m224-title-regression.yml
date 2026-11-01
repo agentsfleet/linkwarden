@@ -1,0 +1,59 @@
+name: M224 title regression
+
+on:
+  pull_request:
+    branches: [dev]
+  workflow_dispatch:
+    inputs:
+      oversized_log:
+        description: Emit bounded fixture output to exercise the log-response cap
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  title-regression:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Record the tested revision
+        run: git rev-parse HEAD
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "22"
+      - name: Enable the repository's Yarn version
+        run: |
+          corepack enable
+          node --version
+          yarn --version
+      - name: Install locked dependencies
+        run: |
+          if yarn install --immutable > "$RUNNER_TEMP/install.log" 2>&1; then
+            printf 'Dependencies installed.\n'
+          else
+            install_status=$?
+            cat "$RUNNER_TEMP/install.log"
+            exit "$install_status"
+          fi
+      - name: Read the pinned regression fixture
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: 95a173dfb71746d8e5ed01b420815668e34806f3
+          path: .m224-regression
+          persist-credentials: false
+      - name: Restore the unchanged regression assertions
+        run: |
+          cp .m224-regression/apps/web/lib/client/unescapeString.test.ts apps/web/lib/client/unescapeString.test.ts
+          mv .m224-regression "$RUNNER_TEMP/m224-regression"
+          sha256sum apps/web/lib/client/unescapeString.test.ts
+      - name: Emit the optional response-cap fixture
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.oversized_log == true }}
+        run: node -e 'for (let i = 0; i < 18000; i++) console.log("fixture log line " + i + " " + "x".repeat(64))'
+      - name: Check link title decoding
+        run: yarn test run apps/web/lib/client/unescapeString.test.ts
